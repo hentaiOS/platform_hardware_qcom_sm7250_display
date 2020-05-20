@@ -69,6 +69,10 @@ LOCAL_SRC_FILES               := QtiComposer.cpp QtiComposerClient.cpp service.c
                                  gl_layer_stitch_impl.cpp \
                                  pixel-display.cpp
 
+ifeq ($(TARGET_USES_FOD_ZPOS), true)
+LOCAL_CFLAGS                  += -DFOD_ZPOS
+endif
+
 LOCAL_INIT_RC                 := vendor.qti.hardware.display.composer-service.rc
 ifneq ($(TARGET_HAS_LOW_RAM),true)
 LOCAL_VINTF_FRAGMENTS         := vendor.qti.hardware.display.composer-service.xml
