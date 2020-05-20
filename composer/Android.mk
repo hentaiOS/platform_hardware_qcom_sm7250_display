@@ -41,6 +41,10 @@ LOCAL_SHARED_LIBRARIES        += com.google.hardware.pixel.display-V1-ndk_platfo
                                  libbinder_ndk \
                                  libbase
 
+ifeq ($(TARGET_USES_FOD_ZPOS), true)
+LOCAL_CFLAGS                  += -DFOD_ZPOS
+endif
+
 LOCAL_SRC_FILES               := QtiComposer.cpp QtiComposerClient.cpp service.cpp \
                                  QtiComposerHandleImporter.cpp \
                                  hwc_session.cpp \
