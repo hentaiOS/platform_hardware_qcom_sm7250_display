@@ -77,6 +77,12 @@ AdrenoMemInfo::AdrenoMemInfo() {
   } else {
     ALOGE(" Failed to load libadreno_utils.so");
   }
+  char property[PROPERTY_VALUE_MAX];
+  property_get(DISABLE_UBWC_PROP, property, "0");
+  if (!(strncmp(property, "1", PROPERTY_VALUE_MAX)) ||
+      !(strncmp(property, "true", PROPERTY_VALUE_MAX))) {
+     gfx_ubwc_disable_ = true;
+  }
 }
 
 AdrenoMemInfo::~AdrenoMemInfo() {
@@ -86,7 +92,6 @@ AdrenoMemInfo::~AdrenoMemInfo() {
 }
 
 void AdrenoMemInfo::AdrenoSetProperties(gralloc::GrallocProperties props) {
-  gfx_ubwc_disable_ = props.ubwc_disable;
   gfx_ahardware_buffer_disable_ = props.ahardware_buffer_disable;
 }
 
@@ -282,15 +287,7 @@ ADRENOPIXELFORMAT AdrenoMemInfo::GetGpuPixelFormat(int hal_format) {
     case HAL_PIXEL_FORMAT_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR:
       return ADRENO_PIXELFORMAT_ASTC_12X12_SRGB;
     default:
-      // Because ag/12418822 to fix GCA camera-Berlin
-      // long shot issue (b/165335520) will cause log
-      // spew here, add below protected condition to avoid
-      // the log spew first and keep tracking the root cause
-      // on b/166142588.
-      if (hal_format != HAL_PIXEL_FORMAT_R_8)
-      {
-        ALOGE("%s: No map for format: 0x%x", __FUNCTION__, hal_format);
-      }
+      ALOGE("%s: No map for format: 0x%x", __FUNCTION__, hal_format);
       break;
   }
 

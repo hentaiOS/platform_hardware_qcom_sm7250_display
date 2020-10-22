@@ -61,8 +61,7 @@ LOCAL_SANITIZE                := integer_overflow
 LOCAL_VENDOR_MODULE           := true
 LOCAL_MODULE_TAGS             := optional
 LOCAL_C_INCLUDES              := $(common_includes) \
-                                 system/memory/libion/include \
-                                 system/memory/libion/kernel-headers \
+                                 $(LIBION_HEADER_PATHS) \
                                  $(kernel_includes)
 
 LOCAL_HEADER_LIBRARIES        := display_headers
@@ -73,6 +72,9 @@ LOCAL_SHARED_LIBRARIES        := $(common_libs) libqdMetaData libdl libgrallocut
                                   android.hardware.graphics.mapper@4.0
 LOCAL_CFLAGS                  := $(common_flags) $(qmaa_flags) -DLOG_TAG=\"qdgralloc\" -Wno-sign-conversion \
                                  -D__QTI_DISPLAY_GRALLOC__
+ifneq ($(TARGET_USES_GRALLOC4),false)
+LOCAL_CFLAGS                  += -DTARGET_USES_GRALLOC4
+endif
 LOCAL_ADDITIONAL_DEPENDENCIES := $(common_deps)
 LOCAL_SRC_FILES               := gr_allocator.cpp gr_buf_mgr.cpp gr_ion_alloc.cpp
 include $(BUILD_SHARED_LIBRARY)

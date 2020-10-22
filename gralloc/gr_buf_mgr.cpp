@@ -32,7 +32,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-
+#include <fstream>
 #include "gr_adreno_info.h"
 #include "gr_buf_descriptor.h"
 #include "gr_priv_handle.h"
@@ -96,18 +96,17 @@ static int validateAndMap(private_handle_t *handle, uint64_t reserved_region_siz
     // The allocator process gets the reserved region size from the BufferDescriptor.
     // When importing to another process, the reserved size is unknown until mapping the metadata,
     // hence the re-mapping below
-    auto metadata = reinterpret_cast<MetaData_t*>(handle->base_metadata);
+    auto metadata = reinterpret_cast<MetaData_t *>(handle->base_metadata);
     if (reserved_region_size == 0 && metadata->reservedSize) {
-        size = getMetaDataSize(metadata->reservedSize);
-        unmapAndReset(handle);
-        void *new_base = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED,
-                              handle->fd_metadata, 0);
-        if (new_base == reinterpret_cast<void*>(MAP_FAILED)) {
-          ALOGE("%s: metadata mmap failed - handle:%p fd: %d err: %s",
-                __func__, handle, handle->fd_metadata, strerror(errno));
-          return -1;
-        }
-        handle->base_metadata = (uintptr_t)new_base;
+      size = getMetaDataSize(metadata->reservedSize);
+      unmapAndReset(handle);
+      void *new_base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, handle->fd_metadata, 0);
+      if (new_base == reinterpret_cast<void *>(MAP_FAILED)) {
+        ALOGE("%s: metadata mmap failed - handle:%p fd: %d err: %s", __func__, handle,
+              handle->fd_metadata, strerror(errno));
+        return -1;
+      }
+      handle->base_metadata = (uintptr_t)new_base;
     }
 #endif
   }
@@ -576,7 +575,6 @@ static Error getComponentSizeAndOffset(int32_t format, PlaneLayoutComponent &com
       break;
     case static_cast<int32_t>(HAL_PIXEL_FORMAT_RAW12):
     case static_cast<int32_t>(HAL_PIXEL_FORMAT_RAW10):
-    case static_cast<int32_t>(HAL_PIXEL_FORMAT_BLOB):
       if (comp.type.value == android::gralloc4::PlaneLayoutComponentType_RAW.value) {
         comp.offsetInBits = 0;
         comp.sizeInBits = -1;
@@ -593,7 +591,7 @@ static Error getComponentSizeAndOffset(int32_t format, PlaneLayoutComponent &com
       }
       break;
     default:
-      ALOGE("Offset and size in bits unknown for format %d", format);
+      ALOGI_IF(DEBUG, "Offset and size in bits unknown for format %d", format);
       return Error::UNSUPPORTED;
   }
   return Error::NONE;
@@ -725,12 +723,12 @@ Error BufferManager::FreeBuffer(std::shared_ptr<Buffer> buf) {
     return Error::BAD_BUFFER;
   }
 
+  auto meta_size = getMetaDataSize(buf->reserved_size);
+
   if (allocator_->FreeBuffer(reinterpret_cast<void *>(hnd->base), hnd->size, hnd->offset, hnd->fd,
                              buf->ion_handle_main) != 0) {
     return Error::BAD_BUFFER;
   }
-
-  auto meta_size = getMetaDataSize(buf->reserved_size);
 
   if (allocator_->FreeBuffer(reinterpret_cast<void *>(hnd->base_metadata), meta_size,
                              hnd->offset_metadata, hnd->fd_metadata, buf->ion_handle_meta) != 0) {
@@ -814,6 +812,11 @@ Error BufferManager::ImportHandleLocked(private_handle_t *hnd) {
   }
 
   RegisterHandleLocked(hnd, ion_handle, ion_handle_meta);
+  allocated_ += hnd->size;
+  if (allocated_ >=  kAllocThreshold) {
+    kAllocThreshold += kMemoryOffset;
+    BuffersDump();
+  }
   return Error::NONE;
 }
 
@@ -873,6 +876,9 @@ Error BufferManager::ReleaseBuffer(private_handle_t const *hnd) {
     if (buf->DecRef()) {
       handles_map_.erase(hnd);
       // Unmap, close ion handle and close fd
+      if (allocated_ >= hnd->size) {
+        allocated_ -= hnd->size;
+      }
       FreeBuffer(buf);
     }
   }
@@ -1095,6 +1101,46 @@ Error BufferManager::AllocateBuffer(const BufferDescriptor &descriptor, buffer_h
     private_handle_t::Dump(hnd);
   }
   return Error::NONE;
+}
+
+void BufferManager:: BuffersDump() {
+  char timeStamp[32];
+  char hms[32];
+  uint64_t millis;
+  struct timeval tv;
+  struct tm ptm;
+
+  gettimeofday(&tv, NULL);
+  localtime_r(&tv.tv_sec, &ptm);
+  strftime (hms, sizeof (hms), "%H:%M:%S", &ptm);
+  millis = tv.tv_usec / 1000;
+  snprintf(timeStamp, sizeof(timeStamp), "Timestamp: %s.%03" PRIu64, hms, millis);
+
+  std::fstream fs;
+  fs.open(file_dump_.kDumpFile, std::ios::app);
+  if (!fs) {
+    return;
+  }
+  fs << "============================" << std::endl;
+  fs << timeStamp << std::endl;
+  fs << "Total layers = " << handles_map_.size() << std::endl;
+  uint64_t totalAllocationSize = 0;
+  for (auto it : handles_map_) {
+    auto buf = it.second;
+    auto hnd = buf->handle;
+    auto metadata = reinterpret_cast<MetaData_t *>(hnd->base_metadata);
+    fs  << std::setw(80) << "Client:" << (metadata ? metadata->name: "No name");
+    fs  << std::setw(20) << "WxH:" << std::setw(4) << hnd->width << " x "
+        << std::setw(4) << hnd->height;
+    fs  << std::setw(20) << "Size: " << std::setw(9) << hnd->size <<  std::endl;
+    totalAllocationSize += hnd->size;
+  }
+  fs << "Total allocation  = " << totalAllocationSize/1024 << "KiB" << std::endl;
+  file_dump_.position = fs.tellp();
+  if (file_dump_.position > (20 * 1024 * 1024)) {
+    file_dump_.position = 0;
+  }
+  fs.close();
 }
 
 Error BufferManager::Dump(std::ostringstream *os) {
@@ -1391,6 +1437,12 @@ Error BufferManager::GetMetadata(private_handle_t *handle, int64_t metadatatype_
       qtigralloc::encodeMetadataState(metadata->isVendorMetadataSet, out);
       break;
 #endif
+#ifdef QTI_BUFFER_TYPE
+    case QTI_BUFFER_TYPE:
+      android::gralloc4::encodeUint32(qtigralloc::MetadataType_BufferType, handle->buffer_type,
+                                      out);
+      break;
+#endif
     default:
       error = Error::UNSUPPORTED;
   }
@@ -1415,10 +1467,6 @@ Error BufferManager::SetMetadata(private_handle_t *handle, int64_t metadatatype_
     return Error::UNSUPPORTED;
   }
 
-  if (in.size() == 0) {
-    return Error::UNSUPPORTED;
-  }
-
   auto metadata = reinterpret_cast<MetaData_t *>(handle->base_metadata);
 
 #ifdef METADATA_V2
@@ -1426,7 +1474,7 @@ Error BufferManager::SetMetadata(private_handle_t *handle, int64_t metadatatype_
   // Reset to false for special cases below
   if (IS_VENDOR_METADATA_TYPE(metadatatype_value)) {
     metadata->isVendorMetadataSet[GET_VENDOR_METADATA_STATUS_INDEX(metadatatype_value)] = true;
-  } else {
+  } else if (GET_STANDARD_METADATA_STATUS_INDEX(metadatatype_value) < METADATA_SET_SIZE) {
     metadata->isStandardMetadataSet[GET_STANDARD_METADATA_STATUS_INDEX(metadatatype_value)] = true;
   }
 #endif
@@ -1525,8 +1573,7 @@ Error BufferManager::SetMetadata(private_handle_t *handle, int64_t metadatatype_
       std::optional<std::vector<uint8_t>> dynamic_metadata_payload;
       android::gralloc4::decodeSmpte2094_40(in, &dynamic_metadata_payload);
       if (dynamic_metadata_payload != std::nullopt) {
-        if (dynamic_metadata_payload->size() > HDR_DYNAMIC_META_DATA_SZ ||
-            dynamic_metadata_payload->size() == 0)
+        if (dynamic_metadata_payload->size() > HDR_DYNAMIC_META_DATA_SZ)
           return Error::BAD_VALUE;
 
         metadata->color.dynamicMetaDataLen = dynamic_metadata_payload->size();
@@ -1604,7 +1651,7 @@ Error BufferManager::SetMetadata(private_handle_t *handle, int64_t metadatatype_
 #ifdef METADATA_V2
       if (IS_VENDOR_METADATA_TYPE(metadatatype_value)) {
         metadata->isVendorMetadataSet[GET_VENDOR_METADATA_STATUS_INDEX(metadatatype_value)] = false;
-      } else {
+      } else if (GET_STANDARD_METADATA_STATUS_INDEX(metadatatype_value) < METADATA_SET_SIZE) {
         metadata->isStandardMetadataSet[GET_STANDARD_METADATA_STATUS_INDEX(metadatatype_value)] =
             false;
       }
