@@ -124,12 +124,14 @@ CamxPixelFormat CameraInfo::GetCameraPixelFormat(int hal_format) {
     case HAL_PIXEL_FORMAT_RAW_OPAQUE:
       format = CAMERA_PIXEL_FORMAT_RAW_OPAQUE;
       break;
+#ifndef NO_RAW_CUSTOM_FORMAT
     case HAL_PIXEL_FORMAT_RAW10:
       format = CAMERA_PIXEL_FORMAT_RAW10;
       break;
     case HAL_PIXEL_FORMAT_RAW12:
       format = CAMERA_PIXEL_FORMAT_RAW12;
       break;
+#endif
     default:
       ALOGE("%s: No map for format: 0x%x", __FUNCTION__, hal_format);
       break;
