@@ -163,8 +163,10 @@ bool IsCameraCustomFormat(int format) {
     case HAL_PIXEL_FORMAT_NV12_UBWC_FLEX_8_BATCH:
     case HAL_PIXEL_FORMAT_MULTIPLANAR_FLEX:
     case HAL_PIXEL_FORMAT_RAW_OPAQUE:
+#ifndef NO_RAW_CUSTOM_FORMAT
     case HAL_PIXEL_FORMAT_RAW10:
     case HAL_PIXEL_FORMAT_RAW12:
+#endif
       return true;
     default:
       break;
@@ -1080,13 +1082,7 @@ void GetAlignedWidthAndHeight(const BufferInfo &info, unsigned int *alignedw,
       aligned_w = ALIGN(width * 12 / 8, 16);
       break;
     case HAL_PIXEL_FORMAT_RAW10:
-      {
-        const unsigned int gpu_alignment =
-            AdrenoMemInfo::GetInstance()->GetGpuPixelAlignment();
-        // gpu_alignment can return 1. Make sure it's at least 64.
-        const unsigned int raw10_alignment = std::max(gpu_alignment, 64u);
-        aligned_w = ALIGN(width * 10 / 8, raw10_alignment);
-      }
+      aligned_w = ALIGN(width * 10 / 8, 16);
       break;
     case HAL_PIXEL_FORMAT_RAW8:
       aligned_w = ALIGN(width, 16);
