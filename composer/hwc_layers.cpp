@@ -531,9 +531,9 @@ HWC2::Error HWCLayer::SetLayerVisibleRegion(hwc_region_t visible) {
 HWC2::Error HWCLayer::SetLayerZOrder(uint32_t z) {
   if (z_ != z) {
 #ifdef FOD_ZPOS
-    if (z & FOD_PRESSED_LAYER_ZORDER) {
+    if (z & 0x20000000u) {
       fod_pressed_ = true;
-      z &= ~FOD_PRESSED_LAYER_ZORDER;
+      z &= ~0x20000000u;
     }
 #endif
 
