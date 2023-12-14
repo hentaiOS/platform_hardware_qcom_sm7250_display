@@ -40,10 +40,8 @@ namespace sdm {
 
 DisplayError CPUHint::Init(HWCDebugHandler *debug_handler) {
   char path[PROPERTY_VALUE_MAX];
-  if (debug_handler->GetProperty("ro.vendor.extension_library", path) != kErrorNone) {
-    DLOGI("Vendor Extension Library not enabled");
-    return kErrorNotSupported;
-  }
+
+  return kErrorNotSupported;
 
   int pre_enable_window = -1;
   debug_handler->GetProperty(PERF_HINT_WINDOW_PROP, &pre_enable_window);
